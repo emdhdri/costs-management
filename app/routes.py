@@ -2,6 +2,9 @@ from app import app
 from app.models import User, Expense
 from flask import jsonify, request, abort, Response
 import mongoengine as me
+from mongoengine.queryset.visitor import Q
+from datetime import datetime
+
 
 @app.route('/')
 def index():
@@ -31,9 +34,38 @@ def get_expenses(username):
     except User.DoesNotExist:
         abort(404, description='Resource not found')
     
-    user_expenses = [expense.to_dict() for expense in Expense.objects(user_ref=user).exclude('user_ref')]
+    parameters = request.args
+    query = (Q(user_ref=user))
+    if('costgt' in parameters):
+        cost_gt = parameters.get('costgt', type=int)
+        query &= Q(cost__gt=cost_gt)
+    if('costlt' in parameters):
+        cost_lt = parameters.get('costlt', type=int)
+        query &= Q(cost__lt=cost_lt)
+    if('before' in parameters):
+        before_date = datetime.fromisoformat(parameters.get('before', type=str))
+        query &= Q(date__lt=before_date)
+    if('after' in parameters):
+        after_date = datetime.fromisoformat(parameters.get('after', type=str))
+        query &= Q(date__gt=after_date)
+
+    user_expenses = [expense.to_dict() for expense in Expense.objects(query).exclude('user_ref')]
     return jsonify(user_expenses)
 
+
+@app.route('/users/<string:username>/expenses/<string:expense_id>', methods=['GET'])
+def get_expense(username, expense_id):
+    try:
+        user = User.objects.get(username=username)
+        expense = Expense.objects.get(user_ref= user, id=expense_id).to_dict()
+    except User.DoesNotExist:
+        abort(404, description='Resource not found')
+    except Expense.DoesNotExist:
+        abort(404, description='Resource not found')
+    except me.ValidationError:
+        abort(403, description='Invalid data')
+
+    return jsonify(expense)
 
 @app.route('/users', methods=['POST'])
 def create_user():
