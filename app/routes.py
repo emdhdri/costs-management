@@ -7,14 +7,6 @@ import mongoengine as me
 def index():
     pass
 
-@app.errorhandler(404)
-def resource_not_found(e):
-    return jsonify(status = 404, error=str(e))
-
-@app.errorhandler(409)
-def duplicate_resource(e):
-    return jsonify(status = 409, error=str(e))
-
 
 @app.route('/users', methods=['GET'])
 def get_users():
@@ -51,7 +43,9 @@ def create_user():
     try:
         user.save()
     except me.errors.NotUniqueError:
-        abort(409, description='duplicate resource')
+        abort(409, description='Duplicate resource')
+    except me.ValidationError:
+        abort(403, description='Invalid data')
     return jsonify(status=200)
 
 
@@ -66,5 +60,8 @@ def create_expense(username):
     data['user_ref'] = user
     expense = Expense()
     expense.from_dict(data)
-    expense.save()
+    try:
+        expense.save()
+    except me.ValidationError:
+        abort(403, description='Invalid data')
     return jsonify(status=200)
