@@ -68,5 +68,3 @@ def create_expense(username):
     expense.from_dict(data)
     expense.save()
     return jsonify(status=200)
-
-#@app.route('/users/<string:username>/expenses/<')
