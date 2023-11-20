@@ -64,4 +64,31 @@ def create_expense(username):
         expense.save()
     except me.ValidationError:
         abort(403, description='Invalid data')
+
+    return jsonify(status=200)
+
+@app.route('/users/<string:username>/expenses/<string:expense_id>', methods=['PUT'])
+def edit_expense(username, expense_id):
+    try:
+        expense = Expense.objects.get(id=expense_id)
+    except Expense.DoesNotExist:
+        abort(404, description='Resource not found')
+    data = request.get_json() or {}
+    expense.from_dict(data)
+    print(expense.cost)
+    try:
+        expense.save()
+    except me.ValidationError:
+        abort(403, description='Invalid data')
+
+    return jsonify(status=200)
+
+@app.route('/users/<string:username>/expenses/<string:expense_id>', methods=['DELETE'])
+def delete_expense(username, expense_id):
+    try:
+        expense = Expense.objects.get(id=expense_id)
+    except Expense.DoesNotExist:
+        abort(404, description='Resource not found')
+    expense.delete()
+
     return jsonify(status=200)

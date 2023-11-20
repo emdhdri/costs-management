@@ -34,12 +34,13 @@ class User(me.Document):
 class Expense(me.Document):
     cost = me.DecimalField(required=True)
     date = me.DateTimeField()
-    user_ref = me.ReferenceField(User, required=True)
+    user_ref = me.ReferenceField(User, required=True, reverse_delete_rule=me.CASCADE)
     description = me.StringField()
     
     def to_dict(self, include_user=True):
         expense_date = self.date.isoformat() if self.date else None
         data = {
+            'id' : str(self.id),
             'cost' : self.cost,
             'date' : expense_date,
             'description' : self.description,
