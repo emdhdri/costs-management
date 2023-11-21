@@ -44,6 +44,7 @@ class Expense(me.Document):
             'cost' : self.cost,
             'date' : expense_date,
             'description' : self.description,
+            'categories' : [item.category_ref.to_dict()['category'] for item in Expense_Category.objects(expense_ref=self)],
         }
         if(include_user and self.user_ref):
             data['user'] = self.user_ref.to_dict()
@@ -56,3 +57,31 @@ class Expense(me.Document):
         for field in ['cost', 'user_ref', 'description']:
             if(field in data):
                 setattr(self, field, data[field])
+
+class Category(me.Document):
+    category = me.StringField(required=True)
+    user_ref = me.ReferenceField(User, required=True, reverse_delete_rule=me.CASCADE)
+
+    def to_dict(self, include_user=False):
+        data = {
+            'category' : self.category,
+            'category_id' : str(self.id),
+        }
+        if(include_user and self.user_ref):
+            data['user'] = self.user_ref.to_dict()
+        return data
+    
+    def from_dict(self, data):
+        for field in ['category', 'user_ref']:
+            if(field in data):
+                setattr(self, field, data[field])
+
+
+class Expense_Category(me.Document):
+    expense_ref = me.ReferenceField(Expense, required=True, reverse_delete_rule=me.CASCADE)
+    category_ref = me.ReferenceField(Category, required=True, reverse_delete_rule=me.CASCADE)
+
+
+
+
+
