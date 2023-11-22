@@ -6,6 +6,9 @@ from mongoengine.queryset.visitor import Q
 from datetime import datetime
 from functools import reduce
 import operator
+from jsonschema import validate
+from app.json_schemas import UserSchema, ExpenseSchema, CategorySchema
+from jsonschema.exceptions import ValidationError
 
 
 @app.route('/')
@@ -27,6 +30,24 @@ def get_user(username):
         abort(404, description="Resource not found")
     
     return jsonify(user)
+
+
+@app.route('/users', methods=['POST'])
+def create_user():
+    data = request.get_json() or {}
+    try:
+        validate(instance=data, schema=UserSchema.get_schema())
+    except ValidationError as e:
+        abort(403, description='Invalid data')
+
+    user = User()
+    user.from_dict(data)
+    try:
+        user.save()
+    except me.errors.NotUniqueError:
+        abort(409, description='Duplicate resource')
+
+    return jsonify(status=200)
 
 
 @app.route('/users/<string:username>/expenses', methods=['GET'])
@@ -55,8 +76,11 @@ def get_user_expenses(username):
             category_values = [Q(category=category) for category in parameters.getlist('category')]
             category_query = reduce(operator.and_, category_values)
             category_objects = Category.objects(category_query)
-        except:
-            pass
+
+        ##################################################################<
+        except Category.DoesNotExist:
+            abort(404, description='category Resource not found')
+        ##################################################################>
 
         expense_queries = [Q(category_ref=category) for category in category_objects]
         expense_category_query = reduce(operator.and_, expense_queries)
@@ -70,33 +94,16 @@ def get_user_expenses(username):
 
 
 @app.route('/users/<string:username>/expenses/<string:expense_id>', methods=['GET'])
-def get_expense(username, expense_id):
+def get_specific_expense(username, expense_id):
     try:
         user = User.objects.get(username=username)
         expense = Expense.objects.get(user_ref=user, id=expense_id).to_dict()
-    except User.DoesNotExist:
-        abort(404, description='Resource not found')
     except Expense.DoesNotExist:
         abort(404, description='Resource not found')
-    except me.ValidationError:
-        abort(403, description='Invalid data')
+    except User.DoesNotExist:
+        abort(404, description='Resource not found')
 
     return jsonify(expense)
-
-@app.route('/users', methods=['POST'])
-def create_user():
-    data = request.get_json() or {}
-    user = User()
-    user.from_dict(data)
-
-    try:
-        user.save()
-    except me.errors.NotUniqueError:
-        abort(409, description='Duplicate resource')
-    except me.ValidationError:
-        abort(403, description='Invalid data')
-
-    return jsonify(status=200)
 
 
 @app.route('/users/<string:username>/expenses', methods=['POST'])
@@ -104,31 +111,69 @@ def create_expense(username):
     try:
         user = User.objects.get(username=username)
     except User.DoesNotExist:
-        abort(404, description="Resource not found")
+        abort(404, description="User resource not found")
     
     data = request.get_json() or {}
+    try:
+        validate(instance=data, schema=ExpenseSchema.get_schema())
+    except ValidationError:
+        abort(403, description='Invalid data')
+
     data['user_ref'] = user
     expense = Expense()
     expense.from_dict(data)
+    expense.save()
+
+    for category in data['categories']:
+        if(Category.objects(category=category).first() == None):
+            category_object = Category()
+            category_object.category = category
+            category_object.user_ref = user
+            category_object.save()
+
+    category_values = [Q(category=category) for category in data['categories']]
+    category_query = reduce(operator.and_, category_values)
+    category_objects = Category.objects(category_query)
+
+    for category in category_objects:
+        expense_category = Expense_Category()
+        expense_category.category_ref = category
+        expense_category.expense_ref = expense
+        expense_category.save()
+
+    return jsonify(status=200)
+
+
+@app.route('/users/<string:username>/expenses/<string:expense_id>', methods=['PUT'])
+def edit_expense(username, expense_id):
     try:
-        expense.save()
-    except me.ValidationError:
+        user = User.objects.get(username=username)
+        expense = Expense.objects.get(user_ref=user, id=expense_id)
+    except Expense.DoesNotExist:
+        abort(404, description='Resource not found')
+    except User.DoesNotExist:
+        abort(404, description='Resource not found')
+    
+    data = request.get_json() or {}
+    try:
+        validate(instance=data, schema=ExpenseSchema.get_schema())
+    except ValidationError:
         abort(403, description='Invalid data')
 
-    try:
-        for category in data['categories']:
-            if(Category.objects(category=category).first() == None):
-                category_object = Category()
-                category_object.category = category
-                category_object.user_ref = user
-                category_object.save()
+    expense.from_dict(data)
+    expense.save()
 
-        category_values = [Q(category=category) for category in data['categories']]
-        category_query = reduce(operator.and_, category_values)
-        category_objects = Category.objects(category_query)
-    except Category.DoesNotExist:
-        abort(404, description="Category resource not found")
+    for category in data['categories']:
+        if(Category.objects(category=category).first() == None):
+            category_object = Category()
+            category_object.category = category
+            category_object.user_ref = user
+            category_object.save()
 
+    category_values = [Q(category=category) for category in data['categories']]
+    category_query = reduce(operator.and_, category_values)
+    category_objects = Category.objects(category_query)
+        
     for category in category_objects:
         if(Expense_Category.objects(expense_ref=expense, category_ref=category).first() == None):
             expense_category = Expense_Category()
@@ -139,49 +184,14 @@ def create_expense(username):
     return jsonify(status=200)
 
 
-@app.route('/users/<string:username>/expenses/<string:expense_id>', methods=['PUT'])
-def edit_expense(username, expense_id):
-    try:
-        user = User.objects.get(username=username)
-        expense = Expense.objects.get(id=expense_id)
-    except Expense.DoesNotExist:
-        abort(404, description='Resource not found')
-    data = request.get_json() or {}
-    expense.from_dict(data)
-
-    try:
-        expense.save()
-    except me.ValidationError:
-        abort(403, description='Invalid data')
-
-    try:
-        for category in data['categories']:
-            if(Category.objects(category=category).first() == None):
-                category_object = Category()
-                category_object.category = category
-                category_object.user_ref = user
-                category_object.save()
-
-        category_values = [Q(category=category) for category in data['categories']]
-        category_query = reduce(operator.and_, category_values)
-        category_objects = Category.objects(category_query)
-    except Category.DoesNotExist:
-        abort(404, description="Category resource not found")
-        
-    for category in category_objects:
-        if(Expense_Category.objects(expense_ref=expense, category_ref=category).count() == 0):
-            expense_category = Expense_Category()
-            expense_category.category_ref = category
-            expense_category.expense_ref = expense
-            expense_category.save()
-
-    return jsonify(status=200)
-
 @app.route('/users/<string:username>/expenses/<string:expense_id>', methods=['DELETE'])
 def delete_expense(username, expense_id):
     try:
-        expense = Expense.objects.get(id=expense_id)
+        user = User.objects.get(username=username)
+        expense = Expense.objects.get(user_ref=user, id=expense_id)
     except Expense.DoesNotExist:
+        abort(404, description='Resource not found')
+    except User.DoesNotExist:
         abort(404, description='Resource not found')
 
     expense.delete()
@@ -207,15 +217,15 @@ def create_category(username):
         abort(404, description="Resource not found")
     
     data = request.get_json() or {}
+    try:
+        validate(instance=data, schema=CategorySchema.get_schema())
+    except ValidationError:
+        abort(403, description='Invalid data')
+
     data['user_ref'] = user
     category = Category()
     category.from_dict(data)
-
-    try:
-        category.save()
-    except me.ValidationError:
-        abort(403, description='Invalid data')
-    
+    category.save()
     return jsonify(status=200)
 
 
@@ -227,13 +237,13 @@ def edit_category(username, category_id):
         abort(404, description="Resource not found")
 
     data = request.get_json() or {}
-    category.from_dict(data)
-
     try:
-        category.save()
-    except me.ValidationError:
+        validate(instance=data, schema=CategorySchema.get_schema())
+    except ValidationError:
         abort(403, description='Invalid data')
-    
+
+    category.from_dict(data)
+    category.save()
     return jsonify(status=200)
 
 
