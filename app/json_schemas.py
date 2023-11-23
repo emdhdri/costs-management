@@ -14,8 +14,14 @@ class ExpenseSchema(jsl.Document):
     cost = jsl.NumberField(required=True)
     date = jsl.DateTimeField(pattern=datetime_pattern)
     description = jsl.StringField()
+    category = jsl.StringField()
 
 class CategorySchema(jsl.Document):
     category = jsl.StringField(required=True)
 
+class editExpenseSchema(jsl.Document):
+    cost = jsl.NumberField()
+    date = jsl.DateTimeField(pattern=datetime_pattern)
+    description = jsl.StringField()
+    category = jsl.StringField()
 

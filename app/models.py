@@ -31,33 +31,6 @@ class User(me.Document):
                 setattr(self, field, data[field])
 
 
-class Expense(me.Document):
-    cost = me.DecimalField(required=True)
-    date = me.DateTimeField()
-    user_ref = me.ReferenceField(User, required=True, reverse_delete_rule=me.CASCADE)
-    description = me.StringField()
-    
-    def to_dict(self, include_user=True):
-        expense_date = self.date.isoformat() if self.date else None
-        data = {
-            'id' : str(self.id),
-            'cost' : self.cost,
-            'date' : expense_date,
-            'description' : self.description,
-            'categories' : [item.category_ref.to_dict()['category'] for item in Expense_Category.objects(expense_ref=self)],
-        }
-        if(include_user and self.user_ref):
-            data['user'] = self.user_ref.to_dict()
-        return data
-    
-    def from_dict(self, data):
-        if('date' in data):
-            expense_date = datetime.fromisoformat(data['date'])
-            setattr(self, 'date', expense_date)
-        for field in ['cost', 'user_ref', 'description']:
-            if(field in data):
-                setattr(self, field, data[field])
-
 class Category(me.Document):
     category = me.StringField(required=True)
     user_ref = me.ReferenceField(User, required=True, reverse_delete_rule=me.CASCADE)
@@ -77,11 +50,33 @@ class Category(me.Document):
                 setattr(self, field, data[field])
 
 
-class Expense_Category(me.Document):
-    expense_ref = me.ReferenceField(Expense, required=True, reverse_delete_rule=me.CASCADE)
-    category_ref = me.ReferenceField(Category, required=True, reverse_delete_rule=me.CASCADE)
-
-
-
+class Expense(me.Document):
+    cost = me.DecimalField(required=True)
+    date = me.DateTimeField()
+    user_ref = me.ReferenceField(User, required=True, reverse_delete_rule=me.CASCADE)
+    description = me.StringField()
+    category_ref = me.ReferenceField(Category)
+    
+    def to_dict(self, include_user=True):
+        expense_date = self.date.isoformat() if self.date else None
+        category = self.category_ref.category if self.category_ref else None
+        data = {
+            'id' : str(self.id),
+            'cost' : self.cost,
+            'date' : expense_date,
+            'description' : self.description,
+            'category' : category
+        }
+        if(include_user and self.user_ref):
+            data['user'] = self.user_ref.to_dict()
+        return data
+    
+    def from_dict(self, data):
+        if('date' in data):
+            expense_date = datetime.fromisoformat(data['date'])
+            setattr(self, 'date', expense_date)
+        for field in ['cost', 'user_ref', 'description', 'category_ref']:
+            if(field in data):
+                setattr(self, field, data[field])
 
 

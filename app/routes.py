@@ -1,5 +1,5 @@
 from app import app
-from app.models import User, Expense, Category, Expense_Category
+from app.models import User, Expense, Category
 from flask import jsonify, request, abort, Response
 import mongoengine as me
 from mongoengine.queryset.visitor import Q
@@ -7,7 +7,7 @@ from datetime import datetime
 from functools import reduce
 import operator
 from jsonschema import validate
-from app.json_schemas import UserSchema, ExpenseSchema, CategorySchema
+from app.json_schemas import UserSchema, ExpenseSchema, CategorySchema, editExpenseSchema
 from jsonschema.exceptions import ValidationError
 
 
@@ -37,7 +37,7 @@ def create_user():
     data = request.get_json() or {}
     try:
         validate(instance=data, schema=UserSchema.get_schema())
-    except ValidationError as e:
+    except ValidationError:
         abort(403, description='Invalid data')
 
     user = User()
@@ -56,14 +56,14 @@ def get_user_expenses(username):
         user = User.objects.get(username=username)
     except User.DoesNotExist:
         abort(404, description='Resource not found')
-    
+
     parameters = request.args
     query = (Q(user_ref=user))
     if('costgt' in parameters):
-        cost_gt = parameters.get('costgt', type=int)
+        cost_gt = parameters.get('costgt', type=float)
         query &= Q(cost__gt=cost_gt)
     if('costlt' in parameters):
-        cost_lt = parameters.get('costlt', type=int)
+        cost_lt = parameters.get('costlt', type=float)
         query &= Q(cost__lt=cost_lt)
     if('before' in parameters):
         before_date = datetime.fromisoformat(parameters.get('before', type=str))
@@ -72,25 +72,20 @@ def get_user_expenses(username):
         after_date = datetime.fromisoformat(parameters.get('after', type=str))
         query &= Q(date__gt=after_date)
     if('category' in parameters):
-        try:
-            category_values = [Q(category=category) for category in parameters.getlist('category')]
-            category_query = reduce(operator.and_, category_values)
-            category_objects = Category.objects(category_query)
-
-        ##################################################################<
-        except Category.DoesNotExist:
-            abort(404, description='category Resource not found')
-        ##################################################################>
-
-        expense_queries = [Q(category_ref=category) for category in category_objects]
-        expense_category_query = reduce(operator.and_, expense_queries)
-        expense_category_objects = Expense_Category.objects(expense_category_query)
-        expense_queries = [Q(id=expense_category.expense_ref.id) for expense_category in expense_category_objects]
-        expense_query = reduce(operator.and_, expense_queries)
-        query &= expense_query
-            
+        category = Category.objects(category=parameters['category']).first()
+        if(category == None):
+            data = {
+                "expenses" : []
+                }
+            return jsonify(data)
+        
+        query &= Q(category_ref=category)
+        
     user_expenses = [expense.to_dict() for expense in Expense.objects(query).exclude('user_ref')]
-    return jsonify(user_expenses)
+    data = {
+        "expenses" : user_expenses
+        }
+    return jsonify(data)
 
 
 @app.route('/users/<string:username>/expenses/<string:expense_id>', methods=['GET'])
@@ -121,26 +116,18 @@ def create_expense(username):
 
     data['user_ref'] = user
     expense = Expense()
-    expense.from_dict(data)
-    expense.save()
-
-    for category in data['categories']:
-        if(Category.objects(category=category).first() == None):
+    
+    if('category' in data):
+        category_object = Category.objects(user_ref=user, category=data['category']).first()
+        if(category_object == None):
             category_object = Category()
-            category_object.category = category
+            category_object.category = data['category']
             category_object.user_ref = user
             category_object.save()
+        data['category_ref'] = category_object
 
-    category_values = [Q(category=category) for category in data['categories']]
-    category_query = reduce(operator.and_, category_values)
-    category_objects = Category.objects(category_query)
-
-    for category in category_objects:
-        expense_category = Expense_Category()
-        expense_category.category_ref = category
-        expense_category.expense_ref = expense
-        expense_category.save()
-
+    expense.from_dict(data)
+    expense.save()
     return jsonify(status=200)
 
 
@@ -156,31 +143,22 @@ def edit_expense(username, expense_id):
     
     data = request.get_json() or {}
     try:
-        validate(instance=data, schema=ExpenseSchema.get_schema())
+        validate(instance=data, schema=editExpenseSchema.get_schema())
     except ValidationError:
         abort(403, description='Invalid data')
 
+    if('category' in data):
+        category_object = Category.objects(category=data['category']).first()
+        if(category_object == None):
+            category_object = Category()
+            category_object.category = data['category']
+            category_object.user_ref = user.id
+            category_object.save()
+        data['category_ref'] = category_object
+
+    print(data)
     expense.from_dict(data)
     expense.save()
-
-    for category in data['categories']:
-        if(Category.objects(category=category).first() == None):
-            category_object = Category()
-            category_object.category = category
-            category_object.user_ref = user
-            category_object.save()
-
-    category_values = [Q(category=category) for category in data['categories']]
-    category_query = reduce(operator.and_, category_values)
-    category_objects = Category.objects(category_query)
-        
-    for category in category_objects:
-        if(Expense_Category.objects(expense_ref=expense, category_ref=category).first() == None):
-            expense_category = Expense_Category()
-            expense_category.category_ref = category
-            expense_category.expense_ref = expense
-            expense_category.save()
-
     return jsonify(status=200)
 
 
@@ -206,7 +184,10 @@ def get_user_categories(username):
         abort(404, description="Resource not found")
 
     categories = [category.to_dict() for category in Category.objects(user_ref=user).exclude('user_ref')]
-    return jsonify(categories)
+    data = {
+        'categories' : categories
+    }
+    return jsonify(data)
 
 
 @app.route('/users/<string:username>/categories', methods=['POST'])
@@ -232,10 +213,12 @@ def create_category(username):
 @app.route('/users/<string:username>/categories/<string:category_id>', methods=['PUT'])
 def edit_category(username, category_id):
     try:
-        category = Category.objects.get(id=category_id)
+        user = User.objects.get(username=username)
+        category = Category.objects.get(user_ref = user, id=category_id)
     except Category.DoesNotExist:
         abort(404, description="Resource not found")
-
+    except User.DoesNotExist:
+        abort(404, description="Resource not found")
     data = request.get_json() or {}
     try:
         validate(instance=data, schema=CategorySchema.get_schema())
@@ -253,7 +236,8 @@ def delete_category(username, category_id):
         category = Category.objects.get(id=category_id)
     except Category.DoesNotExist:
         abort(404, description='Resource not found')
-    
+    Expense.objects(category_ref=category).update(set__category_ref=None)
+
     category.delete()
     return jsonify(status=200)
 
