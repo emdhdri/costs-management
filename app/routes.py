@@ -4,8 +4,6 @@ from flask import jsonify, request, abort
 import mongoengine as me
 from mongoengine.queryset.visitor import Q
 from datetime import datetime
-from functools import reduce
-import operator
 from jsonschema import validate
 from app.json_schemas import (
     UserSchema,
@@ -26,7 +24,7 @@ def index():
 def get_users():
     users = [user.to_dict() for user in User.objects()]
     data = {"users": users}
-    return jsonify(data)
+    return jsonify(data), 200
 
 
 @app.route("/users/<string:username>", methods=["GET"])
@@ -36,7 +34,7 @@ def get_user(username):
     except me.DoesNotExist:
         abort(404, description="Resource not found")
 
-    return jsonify(user)
+    return jsonify(user), 200
 
 
 @app.route("/users", methods=["POST"])
@@ -55,7 +53,7 @@ def create_user():
     except me.errors.NotUniqueError:
         abort(409, description="Duplicate resource")
     user_data = user.to_dict()
-    return jsonify(user_data, status=201)
+    return jsonify(user_data), 201
 
 
 @app.route("/users/<string:username>/expenses", methods=["GET"])
@@ -91,7 +89,7 @@ def get_user_expenses(username):
         expense.to_dict() for expense in Expense.objects(query).exclude("user")
     ]
     data = {"expenses": user_expenses}
-    return jsonify(data)
+    return jsonify(data), 200
 
 
 @app.route("/users/<string:username>/expenses/<string:expense_id>", methods=["GET"])
@@ -102,7 +100,7 @@ def get_specific_expense(username, expense_id):
     except me.DoesNotExist:
         abort(404, description="Resource not found")
 
-    return jsonify(expense)
+    return jsonify(expense), 200
 
 
 @app.route("/users/<string:username>/expenses", methods=["POST"])
@@ -123,18 +121,19 @@ def create_expense(username):
     expense = Expense()
 
     if "category" in data:
-        category_object = Category.objects(user=user, category=data["category"]).first()
+        category_object = Category.objects(user=user, name=data["category"]).first()
         if category_object is None:
             category_object = Category()
-            category_object.category = data["category"]
+            category_object.name = data["category"]
             category_object.user = user
+            category_object.category_id = uuid.uuid4().hex
             category_object.save()
         data["category"] = category_object
 
     expense.from_dict(data)
     expense.save()
     expense_data = expense.to_dict()
-    return jsonify(expense_data, status=201)
+    return jsonify(expense_data), 201
 
 
 @app.route("/users/<string:username>/expenses/<string:expense_id>", methods=["PUT"])
@@ -152,11 +151,12 @@ def edit_expense(username, expense_id):
         abort(400, description="Invalid data")
 
     if "category" in data:
-        category_object = Category.objects(category=data["category"]).first()
+        category_object = Category.objects(user=user, name=data["category"]).first()
         if category_object is None:
             category_object = Category()
-            category_object.category = data["category"]
-            category_object.user = user.id
+            category_object.name = data["category"]
+            category_object.user = user
+            category_object.category_id = uuid.uuid4().hex
             category_object.save()
         data["category"] = category_object
 
@@ -189,7 +189,7 @@ def get_user_categories(username):
         category.to_dict() for category in Category.objects(user=user).exclude("user")
     ]
     data = {"categories": categories}
-    return jsonify(data)
+    return jsonify(data), 200
 
 
 @app.route("/users/<string:username>/categories", methods=["POST"])
@@ -211,7 +211,7 @@ def create_category(username):
     category.from_dict(data)
     category.save()
     category_data = category.to_dict()
-    return jsonify(category_data, status=201)
+    return jsonify(category_data), 201
 
 
 @app.route("/users/<string:username>/categories/<string:category_id>", methods=["PUT"])

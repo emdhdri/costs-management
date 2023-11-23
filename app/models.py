@@ -64,7 +64,7 @@ class Expense(me.Document):
 
     def to_dict(self, include_user=True):
         expense_date = self.date.isoformat() if (self.date is not None) else None
-        category = self.category.category if (self.category is not None) else None
+        category = self.category.name if (self.category is not None) else None
         data = {
             "expense_id": self.expense_id,
             "cost": self.cost,
