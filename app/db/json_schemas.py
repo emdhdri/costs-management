@@ -10,6 +10,7 @@ class UserSchema(jsl.Document):
     username = jsl.StringField(required=True)
     email = jsl.EmailField(pattern=email_pattern)
     birth_date = jsl.DateTimeField(pattern=datetime_pattern)
+    password = jsl.StringField(required=True)
 
 
 class ExpenseSchema(jsl.Document):

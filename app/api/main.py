@@ -1,11 +1,11 @@
-from app import app
-from app.models import User, Expense, Category
+from app.api import api_bp
+from app.db.models import User, Expense, Category
 from flask import jsonify, request, abort
 import mongoengine as me
 from mongoengine.queryset.visitor import Q
 from datetime import datetime
 from jsonschema import validate
-from app.json_schemas import (
+from app.db.json_schemas import (
     UserSchema,
     ExpenseSchema,
     CategorySchema,
@@ -13,31 +13,17 @@ from app.json_schemas import (
 )
 from jsonschema.exceptions import ValidationError
 import uuid
+from app.api.auth import basic_auth, token_auth
 
 
-@app.route("/")
-def index():
-    pass
-
-
-@app.route("/users", methods=["GET"])
-def get_users():
-    users = [user.to_dict() for user in User.objects()]
-    data = {"users": users}
-    return jsonify(data), 200
-
-
-@app.route("/users/<string:username>", methods=["GET"])
-def get_user(username):
-    try:
-        user = User.objects.get(username=username).to_dict()
-    except me.DoesNotExist:
-        abort(404, description="Resource not found")
-
+@api_bp.route("/user", methods=["GET"])
+@token_auth.login_required
+def get_user():
+    user = token_auth.current_user().to_dict()
     return jsonify(user), 200
 
 
-@app.route("/users", methods=["POST"])
+@api_bp.route("/register", methods=["POST"])
 def create_user():
     data = request.get_json() or {}
     try:
@@ -45,24 +31,22 @@ def create_user():
     except ValidationError:
         abort(400, description="Invalid data")
 
-    data["user_id"] = uuid.uuid4().hex
+    check_user_query = Q(email=data["email"]) | Q(username=data["username"])
+    if User.objects(check_user_query).first() is not None:
+        abort(409, description="Duplicate resource")
+
+    data["user_id"] = str(uuid.uuid4())
     user = User()
     user.from_dict(data)
-    try:
-        user.save()
-    except me.errors.NotUniqueError:
-        abort(409, description="Duplicate resource")
+    user.save()
     user_data = user.to_dict()
     return jsonify(user_data), 201
 
 
-@app.route("/users/<string:username>/expenses", methods=["GET"])
-def get_user_expenses(username):
-    try:
-        user = User.objects.get(username=username)
-    except me.DoesNotExist:
-        abort(404, description="Resource not found")
-
+@api_bp.route("/user/expenses", methods=["GET"])
+@token_auth.login_required
+def get_user_expenses():
+    user = token_auth.current_user()
     parameters = request.args
     query = Q(user=user)
     if "costgt" in parameters:
@@ -92,10 +76,11 @@ def get_user_expenses(username):
     return jsonify(data), 200
 
 
-@app.route("/users/<string:username>/expenses/<string:expense_id>", methods=["GET"])
-def get_specific_expense(username, expense_id):
+@api_bp.route("/user/expenses/<string:expense_id>", methods=["GET"])
+@token_auth.login_required
+def get_specific_expense(expense_id):
     try:
-        user = User.objects.get(username=username)
+        user = token_auth.current_user()
         expense = Expense.objects.get(user=user, expense_id=expense_id).to_dict()
     except me.DoesNotExist:
         abort(404, description="Resource not found")
@@ -103,13 +88,10 @@ def get_specific_expense(username, expense_id):
     return jsonify(expense), 200
 
 
-@app.route("/users/<string:username>/expenses", methods=["POST"])
-def create_expense(username):
-    try:
-        user = User.objects.get(username=username)
-    except me.DoesNotExist:
-        abort(404, description="User resource not found")
-
+@api_bp.route("/user/expenses", methods=["POST"])
+@token_auth.login_required
+def create_expense():
+    user = token_auth.current_user()
     data = request.get_json() or {}
     try:
         validate(instance=data, schema=ExpenseSchema.get_schema())
@@ -117,7 +99,7 @@ def create_expense(username):
         abort(400, description="Invalid data")
 
     data["user"] = user
-    data["expense_id"] = uuid.uuid4().hex
+    data["expense_id"] = str(uuid.uuid4())
     expense = Expense()
 
     if "category" in data:
@@ -126,7 +108,7 @@ def create_expense(username):
             category_object = Category()
             category_object.name = data["category"]
             category_object.user = user
-            category_object.category_id = uuid.uuid4().hex
+            category_object.category_id = str(uuid.uuid4())
             category_object.save()
         data["category"] = category_object
 
@@ -136,10 +118,11 @@ def create_expense(username):
     return jsonify(expense_data), 201
 
 
-@app.route("/users/<string:username>/expenses/<string:expense_id>", methods=["PUT"])
-def edit_expense(username, expense_id):
+@api_bp.route("/user/expenses/<string:expense_id>", methods=["PUT"])
+@token_auth.login_required
+def edit_expense(expense_id):
     try:
-        user = User.objects.get(username=username)
+        user = token_auth.current_user()
         expense = Expense.objects.get(user=user, expense_id=expense_id)
     except me.DoesNotExist:
         abort(404, description="Resource not found")
@@ -156,7 +139,7 @@ def edit_expense(username, expense_id):
             category_object = Category()
             category_object.name = data["category"]
             category_object.user = user
-            category_object.category_id = uuid.uuid4().hex
+            category_object.category_id = str(uuid.uuid4())
             category_object.save()
         data["category"] = category_object
 
@@ -166,10 +149,11 @@ def edit_expense(username, expense_id):
     return jsonify(status=200)
 
 
-@app.route("/users/<string:username>/expenses/<string:expense_id>", methods=["DELETE"])
-def delete_expense(username, expense_id):
+@api_bp.route("/user/expenses/<string:expense_id>", methods=["DELETE"])
+@token_auth.login_required
+def delete_expense(expense_id):
     try:
-        user = User.objects.get(username=username)
+        user = token_auth.current_user()
         expense = Expense.objects.get(user=user, expense_id=expense_id)
     except me.DoesNotExist:
         abort(404, description="Resource not found")
@@ -178,13 +162,10 @@ def delete_expense(username, expense_id):
     return jsonify(status=200)
 
 
-@app.route("/users/<string:username>/categories", methods=["GET"])
-def get_user_categories(username):
-    try:
-        user = User.objects.get(username=username)
-    except me.DoesNotExist:
-        abort(404, description="Resource not found")
-
+@api_bp.route("/user/categories", methods=["GET"])
+@token_auth.login_required
+def get_user_categories():
+    user = token_auth.current_user()
     categories = [
         category.to_dict() for category in Category.objects(user=user).exclude("user")
     ]
@@ -192,13 +173,10 @@ def get_user_categories(username):
     return jsonify(data), 200
 
 
-@app.route("/users/<string:username>/categories", methods=["POST"])
-def create_category(username):
-    try:
-        user = User.objects.get(username=username)
-    except me.DoesNotExist:
-        abort(404, description="Resource not found")
-
+@api_bp.route("/user/categories", methods=["POST"])
+@token_auth.login_required
+def create_category():
+    user = token_auth.current_user()
     data = request.get_json() or {}
     try:
         validate(instance=data, schema=CategorySchema.get_schema())
@@ -206,7 +184,7 @@ def create_category(username):
         abort(400, description="Invalid data")
 
     data["user"] = user
-    data["category_id"] = uuid.uuid4().hex
+    data["category_id"] = str(uuid.uuid4())
     category = Category()
     category.from_dict(data)
     category.save()
@@ -214,10 +192,11 @@ def create_category(username):
     return jsonify(category_data), 201
 
 
-@app.route("/users/<string:username>/categories/<string:category_id>", methods=["PUT"])
-def edit_category(username, category_id):
+@api_bp.route("/user/categories/<string:category_id>", methods=["PUT"])
+@token_auth.login_required
+def edit_category(category_id):
     try:
-        user = User.objects.get(username=username)
+        user = token_auth.current_user()
         category = Category.objects.get(user=user, category_id=category_id)
     except me.DoesNotExist:
         abort(404, description="Resource not found")
@@ -233,12 +212,13 @@ def edit_category(username, category_id):
     return jsonify(status=200)
 
 
-@app.route(
-    "/users/<string:username>/categories/<string:category_id>", methods=["DELETE"]
+@api_bp.route(
+    "/user/<string:username>/categories/<string:category_id>", methods=["DELETE"]
 )
-def delete_category(username, category_id):
+@token_auth.login_required
+def delete_category(category_id):
     try:
-        user = User.objects.get(username=username)
+        user = token_auth.current_user()
         category = Category.objects.get(user=user, category_id=category_id)
     except me.DoesNotExist:
         abort(404, description="Resource not found")
