@@ -19,6 +19,29 @@ from app.api.auth import basic_auth, token_auth
 @api_bp.route("/user", methods=["GET"])
 @token_auth.login_required
 def get_user():
+    """
+    @api {get} /api/user
+    @apiName GetUser
+    @apiGroup User 
+
+    @apiSuccess {String} first_name Firstname of the User.
+    @apiSuccess {String} last_name Lastname of the User.
+    @apiSuccess {String} username username of the User.
+    @apiSuccess {String} email email of the User.
+    @apiSuccess {String} birth_date birth date of User.
+    @apiSuccess {String} user_id id of User.
+
+    @apiSuccessExample success-response:
+        HTTP/1.1 200 OK
+        {
+            "first_name" : "steve",
+            "last_name" : "jobs",
+            "username" : "sjobs",
+            "email" : "sjobs@apple,
+            "birth_date" : "1955-02-24T00:00:00",
+            "user_id" : "e3d23c73-7593-4ca3-80cb-4d06e6029456"
+        }
+    """
     user = token_auth.current_user().to_dict()
     return jsonify(user), 200
 
@@ -46,6 +69,33 @@ def create_user():
 @api_bp.route("/user/expenses", methods=["GET"])
 @token_auth.login_required
 def get_user_expenses():
+    """
+    @api {get} /api/user/expenses
+    @apiName GetUserExpenses
+    @apiGroup User
+    @apiQuery {Number} costgt Expense cost upper bound.
+    @apiQuery {Number} costlt Expense cost lower bound.
+    @apiQuery {String} category Expense category.
+    @apiQuery {String} after Expense date after.
+    @apiQuery {String} before Expense date before.
+
+
+    @apiSuccess {object[]} expenses A list of Users Expenses.
+
+    @apiSuccessExample success-response:
+        HTTP/1.1 200 OK
+        {
+            "expenses": [
+                {
+                    "category": "transportation",
+                    "cost": 23,
+                    "date": null,
+                    "description": null,
+                    "expense_id": "d1d97f7e-ecb2-4682-9128-2a726e4234ef"
+                }
+            ]
+        }
+    """
     user = token_auth.current_user()
     parameters = request.args
     query = Q(user=user)
