@@ -1,11 +1,8 @@
 import mongoengine as me
-from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
-from flask_login import UserMixin
 import base64
 from datetime import datetime, timedelta
 import os
-
 
 class User(me.Document):
     user_id = me.StringField(primary_key=True)
@@ -79,51 +76,3 @@ class User(me.Document):
         if user is None or user.token_expiration < datetime.utcnow():
             return None
         return user
-
-
-class Category(me.Document):
-    name = me.StringField(required=True)
-    user = me.ReferenceField(User, required=True, reverse_delete_rule=me.CASCADE)
-    category_id = me.StringField(unique=True, required=True)
-
-    def to_dict(self, include_user=False):
-        data = {"name": self.name, "category_id": self.category_id}
-        if include_user and self.user:
-            data["user"] = self.user.to_dict()
-        return data
-
-    def from_dict(self, data):
-        for field in ["name", "user", "category_id"]:
-            if field in data:
-                setattr(self, field, data[field])
-
-
-class Expense(me.Document):
-    cost = me.IntField(required=True)
-    date = me.DateTimeField()
-    user = me.ReferenceField(User, required=True, reverse_delete_rule=me.CASCADE)
-    description = me.StringField()
-    category = me.ReferenceField(Category)
-    expense_id = me.StringField(unique=True, required=True)
-
-    def to_dict(self, include_user=True):
-        expense_date = self.date.isoformat() if (self.date is not None) else None
-        category = self.category.name if (self.category is not None) else None
-        data = {
-            "expense_id": self.expense_id,
-            "cost": self.cost,
-            "date": expense_date,
-            "description": self.description,
-            "category": category,
-        }
-        if include_user and self.user:
-            data["user"] = self.user.to_dict()
-        return data
-
-    def from_dict(self, data):
-        if "date" in data:
-            expense_date = datetime.fromisoformat(data["date"])
-            setattr(self, "date", expense_date)
-        for field in ["cost", "user", "description", "category", "expense_id"]:
-            if field in data:
-                setattr(self, field, data[field])

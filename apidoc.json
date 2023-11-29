@@ -1,0 +1,6 @@
+{
+  "name": "costs management API",
+  "description": "Documentation for an expense management RESTful API implemented with flask.",
+  "title": "costs management documentation",
+  "order": ["User", "Expense", "Category", "login/logout"]
+}
