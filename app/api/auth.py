@@ -13,6 +13,8 @@ def login():
     @apiHeader {String} authorization base64-encoded username:password string
 
     @apiSuccess {String} token Authorization token
+
+    @apiError (Unauthorized 401) Unauthorized The user name or password is incorrect.
     """
     token = basic_auth.current_user().get_token()
     data = {"token": token}
