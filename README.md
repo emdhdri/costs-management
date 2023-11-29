@@ -18,7 +18,7 @@ The Expense Management System Back-End is a RESTful API designed to handle expen
 
 ```bash
 git clone https://github.com/emdhdri/costs-management.git
-cd expense-management-system
+cd costs-management
 ```
 
 2. Install dependencies:
