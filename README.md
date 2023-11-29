@@ -7,6 +7,7 @@ This is the Back-End of an Expense Management System implemented in Python using
 - [Overview](#overview)
 - [Installation](#installation)
 - [Usage](#usage)
+- [API Documentation](#api-documentation)
 
 ## Overview
 
